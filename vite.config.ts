@@ -9,6 +9,7 @@ export default defineConfig({
   server: {
     port: PORT,
     host: HOST,
+    allowedHosts: ["gov-map-playground.landly.co.il"],
     proxy: {
       "/api/govmap": {
         target: "https://www.govmap.gov.il",
@@ -21,5 +22,6 @@ export default defineConfig({
   preview: {
     port: PORT,
     host: HOST,
+    allowedHosts: ["gov-map-playground.landly.co.il"],
   },
 });
