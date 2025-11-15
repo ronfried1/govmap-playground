@@ -22,6 +22,6 @@ export default defineConfig({
   preview: {
     port: PORT,
     host: HOST,
-    allowedHosts: ["gov-map-playground.landly.co.il"],
+    allowedHosts: ["gov-map-playground.landly.co.il",],
   },
 });
