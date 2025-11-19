@@ -18,6 +18,7 @@ export default defineConfig({
     },
     preview: {
         port: PORT,
-        host: HOST,
+        host: true, // Allow access from all network interfaces
+        allowedHosts: true, // Allow all hosts (needed for production deployments behind proxies)
     },
 });
