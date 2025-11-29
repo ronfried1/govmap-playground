@@ -17,19 +17,7 @@ declare global {
   }
 }
 
-type MapConfig = {
-  token: string;
-  centerX: number;
-  centerY: number;
-  level: number;
-  background: string;
-  layersMode?: number;
-  identifyOnClick: boolean;
-  showXY: boolean;
-  zoomButtons: boolean;
-  bgButton: boolean;
-  language: string;
-};
+type MapConfig = any
 
 type MapStatus = "idle" | "initializing" | "ready" | "error";
 
@@ -99,24 +87,22 @@ const MAP_ELEMENT_ID = "govmap-stage";
 const MAX_LOGS = 40;
 const PLAYGROUND_STORAGE_KEY = "govmap-playground";
 const METHOD_HISTORY_MAX = 10;
-const DEFAULT_ACTIVE_LAYER = "nadlan";
+const DEFAULT_ACTIVE_LAYER = "layer_215978";
 const ENV_GOVMAP_TOKEN = import.meta.env.VITE_GOVMAP_TOKEN ?? "";
-console.log("this is",ENV_GOVMAP_TOKEN);
-
 const PLAYGROUND_TIMEOUT_MS = 8000;
-const DEFAULT_LAYERS = ["SUB_GUSH_ALL", "PARCEL_ALL", "layer_215978", "nadlan"];
+const DEFAULT_LAYERS = ["SUB_GUSH_ALL", "PARCEL_ALL", "layer_215978"];
 
 const defaultConfig: MapConfig = {
   token: ENV_GOVMAP_TOKEN,
   centerX: 200000,
   centerY: 630000,
   level: 7,
-  background: "2",
+  background: 2,
   layersMode: 1,
+  isEmbeddedToggle: false,
   identifyOnClick: false,
   showXY: true,
   zoomButtons: true,
-  bgButton: true,
   language: "en",
 };
 
@@ -308,21 +294,19 @@ function App() {
 
       const payload: Record<string, unknown> = {
         token: nextConfig.token || undefined,
-        level: Number(nextConfig.level) || undefined,
-        center: {
-          x: Number(nextConfig.centerX),
-          y: Number(nextConfig.centerY),
-        },
-        background: nextConfig.background || undefined,
-        layers: nextLayers.length ? nextLayers : undefined,
+        // visibleLayers:nextLayers,
+        layers: nextLayers,
+        background: nextConfig.background,
         layersMode: nextConfig.layersMode ?? 1,
+        isEmbeddedToggle: nextConfig.isEmbeddedToggle ?? false,
         identifyOnClick: nextConfig.identifyOnClick,
         showXY: nextConfig.showXY,
         zoomButtons: nextConfig.zoomButtons,
         bgButton: nextConfig.bgButton,
         language: nextConfig.language,
       };
-
+      console.log("payload", payload);
+      
       try {
         await window.govmap.createMap(MAP_ELEMENT_ID, payload);
         setMapStatus("ready");
