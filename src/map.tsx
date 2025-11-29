@@ -98,38 +98,45 @@ function MapStandalone() {
           Back to main
         </a>
       </div>
-      <button
-        type="button"
-        onClick={() => {
-          if (typeof window.govmap?.getLayerEntities !== "function") {
-            // eslint-disable-next-line no-console
-            console.warn("govmap.getLayerEntities is not available yet.");
-            return;
-          }
-          const params = { layerName: "nadlan" };
-          window.govmap
-            .getLayerEntities(params)
-            .then((response: any) => {
-              // eslint-disable-next-line no-console
-              console.log("Manual getLayerEntities nadlan:", response);
-            })
-            .catch((err: any) => {
-              // eslint-disable-next-line no-console
-              console.error("Failed to fetch layer entities (nadlan):", err);
-            });
-        }}
-        style={{
-          margin: "0.5rem 0 1rem",
-          padding: "0.55rem 0.9rem",
-          borderRadius: "0.65rem",
-          border: "1px solid #cbd5f5",
-          background: "#312e81",
-          color: "#fff",
-          cursor: "pointer",
-        }}
-      >
-        Fetch nadlan entities
-      </button>
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", margin: "0.5rem 0 1rem" }}>
+        {[
+          { label: 'Fetch "govmap:layer_nadlan"', layerName: "govmap:layer_nadlan" },
+          { label: 'Fetch "layer_nadlan"', layerName: "layer_nadlan" },
+        ].map((item) => (
+          <button
+            key={item.layerName}
+            type="button"
+            onClick={() => {
+              if (typeof window.govmap?.getLayerEntities !== "function") {
+                // eslint-disable-next-line no-console
+                console.warn("govmap.getLayerEntities is not available yet.");
+                return;
+              }
+              const params = { layerName: item.layerName };
+              window.govmap
+                .getLayerEntities(params)
+                .then((response: any) => {
+                  // eslint-disable-next-line no-console
+                  console.log(`Manual getLayerEntities ${item.layerName}:`, response);
+                })
+                .catch((err: any) => {
+                  // eslint-disable-next-line no-console
+                  console.error(`Failed to fetch layer entities (${item.layerName}):`, err);
+                });
+            }}
+            style={{
+              padding: "0.55rem 0.9rem",
+              borderRadius: "0.65rem",
+              border: "1px solid #cbd5f5",
+              background: "#312e81",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
       <div
         id={MAP_ELEMENT_ID}
         style={{
