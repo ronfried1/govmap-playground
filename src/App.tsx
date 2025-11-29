@@ -18,6 +18,25 @@ declare global {
         options?: Record<string, unknown>,
       ) => Promise<unknown>;
       dispose?: (elementId: string) => void;
+      getLayerEntities?: (
+        payload: Record<string, unknown>,
+        mapDivId?: string,
+      ) => Promise<unknown>;
+      getEntities?: (payload: Record<string, unknown>, mapDivId?: string) => Promise<unknown>;
+      identifyByXYAndLayer?: (
+        x: number,
+        y: number,
+        layers: string[],
+        mapDivId?: string,
+      ) => Promise<unknown>;
+      displayGeometries?: (
+        payload: Record<string, unknown>,
+        mapDivId?: string,
+      ) => { progress?: (cb: (data: unknown) => void) => unknown; then?: (cb: () => void) => unknown };
+      zoomToXY?: (payload: Record<string, unknown>, mapDivId?: string) => void;
+      getLayerData?: (payload: Record<string, unknown>, mapDivId?: string) => Promise<unknown>;
+      getMapUrl?: (payload?: unknown, mapDivId?: string) => Promise<unknown>;
+      getCenter?: (payload?: unknown, mapDivId?: string) => Promise<unknown>;
     };
   }
 }
@@ -53,9 +72,57 @@ type DbfSummary = {
   recordLength: number;
 };
 
+type PlaygroundMethodId =
+  | "getLayerEntities"
+  | "getEntities"
+  | "identify"
+  | "zoomToGeometry"
+  | "getLayerExtent"
+  | "custom";
+
+type PlaygroundFieldType = "text" | "number" | "textarea";
+
+type PlaygroundField = {
+  key: string;
+  label: string;
+  type: PlaygroundFieldType;
+  placeholder?: string;
+  helper?: string;
+};
+
+type PlaygroundMethod = {
+  id: PlaygroundMethodId;
+  label: string;
+  description: string;
+  fields: PlaygroundField[];
+};
+
+type PlaygroundRun = {
+  methodId: PlaygroundMethodId;
+  methodName: string;
+  payload: unknown;
+  result: unknown;
+  success: boolean;
+  startedAt: number;
+  endedAt: number;
+  note?: string;
+};
+
+type PlaygroundHistoryItem = {
+  id: string;
+  methodId: PlaygroundMethodId;
+  methodName: string;
+  payloadPreview: string;
+  success: boolean;
+  timestamp: number;
+};
+
 const GOVMAP_SCRIPT_URL = "https://www.govmap.gov.il/govmap/api/govmap.api.js";
 const MAP_ELEMENT_ID = "govmap-stage";
 const MAX_LOGS = 40;
+const PLAYGROUND_STORAGE_KEY = "govmap-playground";
+const METHOD_HISTORY_MAX = 10;
+const DEFAULT_ACTIVE_LAYER = "nadlan";
 
 const defaultConfig: MapConfig = {
   token: "",
@@ -76,6 +143,20 @@ function formatTimestamp(date = new Date()) {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function safeStringify(value: unknown, space = 2) {
+  try {
+    return JSON.stringify(value, null, space);
+  } catch (error) {
+    console.warn("Failed to stringify value", error);
+    return String(value);
+  }
+}
+
+function summarizePayload(payload: unknown, limit = 220) {
+  const raw = safeStringify(payload, 0);
+  return raw.length > limit ? `${raw.slice(0, limit)}...` : raw;
 }
 
 function App() {
@@ -103,7 +184,61 @@ function App() {
   const [dbfSummary, setDbfSummary] = useState<DbfSummary | null>(null);
   const [dbfError, setDbfError] = useState<string | null>(null);
   const [dbfBusy, setDbfBusy] = useState(false);
+  const [activeLayerName, setActiveLayerName] = useState(DEFAULT_ACTIVE_LAYER);
+  const [selectedMethod, setSelectedMethod] = useState<PlaygroundMethodId>("getLayerEntities");
+  const [methodParams, setMethodParams] = useState<Record<PlaygroundMethodId, Record<string, unknown>>>({
+    getLayerEntities: { layerName: DEFAULT_ACTIVE_LAYER, where: "" },
+    getEntities: { layerName: DEFAULT_ACTIVE_LAYER, objectIds: "" },
+    identify: { x: 200000, y: 630000, level: 12 },
+    zoomToGeometry: {
+      wkt: "POLYGON((199900 630000,199950 630050,199900 630100,199850 630050,199900 630000))",
+      srid: 2039,
+      color: "#de3b8a",
+      name: "wkt-geometry",
+    },
+    getLayerExtent: { layerName: DEFAULT_ACTIVE_LAYER },
+    custom: { methodName: "getLayerEntities", rawPayload: '{ "layerName": "nadlan" }' },
+  });
+  const [playgroundResult, setPlaygroundResult] = useState<PlaygroundRun | null>(null);
+  const [playgroundError, setPlaygroundError] = useState<string | null>(null);
+  const [playgroundBusy, setPlaygroundBusy] = useState(false);
+  const [playgroundHistory, setPlaygroundHistory] = useState<PlaygroundHistoryItem[]>([]);
   const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(PLAYGROUND_STORAGE_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as {
+        activeLayer?: string;
+        selectedMethod?: PlaygroundMethodId;
+        methodParams?: Record<PlaygroundMethodId, Record<string, unknown>>;
+        history?: PlaygroundHistoryItem[];
+      };
+      if (parsed.activeLayer) setActiveLayerName(parsed.activeLayer);
+      if (parsed.selectedMethod) setSelectedMethod(parsed.selectedMethod);
+      if (parsed.methodParams) {
+        setMethodParams((prev) => ({ ...prev, ...parsed.methodParams }));
+      }
+      if (parsed.history) setPlaygroundHistory(parsed.history);
+    } catch (error) {
+      console.warn("Failed to restore playground state", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const payload = {
+        activeLayer: activeLayerName,
+        selectedMethod,
+        methodParams,
+        history: playgroundHistory,
+      };
+      localStorage.setItem(PLAYGROUND_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.warn("Failed to persist playground state", error);
+    }
+  }, [activeLayerName, methodParams, playgroundHistory, selectedMethod]);
 
   const appendLog = useCallback((message: string) => {
     setLogs((prev) => {
@@ -273,11 +408,95 @@ function App() {
     }
   }, [streetDealsData]);
 
+  const playgroundMethods = useMemo<PlaygroundMethod[]>(
+    () => [
+      {
+        id: "getLayerEntities",
+        label: "getLayerEntities",
+        description: "Fetch all entities for a layer (supports where/paging).",
+        fields: [
+          { key: "layerName", label: "Layer name", type: "text", placeholder: "nadlan" },
+          { key: "where", label: "Where clause", type: "text", placeholder: "1=1" },
+          { key: "pageNumber", label: "Page number", type: "number", placeholder: "1" },
+          { key: "pageSize", label: "Page size", type: "number", placeholder: "500" },
+        ],
+      },
+      {
+        id: "getEntities",
+        label: "getEntities",
+        description: "Try govmap.getEntities if available; falls back to getLayerEntities.",
+        fields: [
+          { key: "layerName", label: "Layer name", type: "text", placeholder: "nadlan" },
+          {
+            key: "objectIds",
+            label: "Object IDs (comma separated)",
+            type: "text",
+            placeholder: "12345,12346",
+          },
+        ],
+      },
+      {
+        id: "identify",
+        label: "identifyByXYAndLayer",
+        description: "Run identify for X/Y against a layer at the current zoom level.",
+        fields: [
+          { key: "x", label: "X (TM Grid)", type: "number", placeholder: "200000" },
+          { key: "y", label: "Y (TM Grid)", type: "number", placeholder: "630000" },
+          { key: "level", label: "Zoom level", type: "number", placeholder: "12" },
+          { key: "layerName", label: "Layer name", type: "text", placeholder: "nadlan" },
+        ],
+      },
+      {
+        id: "zoomToGeometry",
+        label: "zoomToGeometry (displayGeometries)",
+        description: "Display WKT on the map (uses displayGeometries under the hood).",
+        fields: [
+          {
+            key: "wkt",
+            label: "WKT geometry",
+            type: "textarea",
+            placeholder: "POLYGON((...))",
+          },
+          { key: "srid", label: "SRID", type: "number", placeholder: "2039" },
+          { key: "color", label: "Color", type: "text", placeholder: "#de3b8a" },
+          { key: "name", label: "Name", type: "text", placeholder: "test-geometry" },
+        ],
+      },
+      {
+        id: "getLayerExtent",
+        label: "getLayerExtent (via getLayerData)",
+        description: "Fetch layer metadata/extent using getLayerData.",
+        fields: [{ key: "layerName", label: "Layer name", type: "text", placeholder: "nadlan" }],
+      },
+      {
+        id: "custom",
+        label: "Custom method",
+        description: "Call any window.govmap method with raw JSON payload.",
+        fields: [
+          { key: "methodName", label: "Method name", type: "text", placeholder: "getLayerEntities" },
+          {
+            key: "rawPayload",
+            label: "Raw payload (JSON)",
+            type: "textarea",
+            placeholder: '{ "layerName": "nadlan" }',
+            helper: "Leave empty to send undefined.",
+          },
+        ],
+      },
+    ],
+    [],
+  );
+
   const dbfDownloadName = useMemo(() => {
     if (!dbfSummary) return "dbf-export.csv";
     const base = dbfSummary.fileName.replace(/\.dbf$/i, "") || "dbf-export";
     return `${base}.csv`;
   }, [dbfSummary]);
+
+  const currentMethod = useMemo(
+    () => playgroundMethods.find((item) => item.id === selectedMethod) ?? playgroundMethods[0],
+    [playgroundMethods, selectedMethod],
+  );
 
   useEffect(
     () => () => {
@@ -386,6 +605,244 @@ function App() {
     [appendLog, dbfFile],
   );
 
+  const updateMethodParam = useCallback(
+    (methodId: PlaygroundMethodId, key: string, value: unknown) => {
+      setMethodParams((prev) => ({
+        ...prev,
+        [methodId]: {
+          ...(prev[methodId] ?? {}),
+          [key]: value,
+        },
+      }));
+    },
+    [],
+  );
+
+  const resolveProgressResult = useCallback(async (output: unknown) => {
+    if (
+      output &&
+      typeof output === "object" &&
+      "progress" in output &&
+      typeof (output as { progress?: unknown }).progress === "function"
+    ) {
+      return new Promise<unknown>((resolve) => {
+        let lastChunk: unknown = null;
+        // @ts-expect-error GovMap progress API
+        output.progress((data: unknown) => {
+          lastChunk = data;
+          if ((data as { isCompleted?: boolean })?.isCompleted) {
+            resolve(data);
+          }
+        });
+        setTimeout(() => resolve(lastChunk ?? { message: "Request dispatched; no completion event yet." }), 1500);
+      });
+    }
+    return output;
+  }, []);
+
+  const handlePlaygroundRun = useCallback(async () => {
+    if (!window.govmap) {
+      setPlaygroundError("GovMap global is not ready yet.");
+      appendLog("GovMap playground: govmap is undefined.");
+      return;
+    }
+    if (mapStatus !== "ready") {
+      setPlaygroundError("Map is not ready yet. Wait for status 'ready'.");
+      appendLog("GovMap playground: map not ready.");
+      return;
+    }
+
+    const method = playgroundMethods.find((item) => item.id === selectedMethod);
+    if (!method) return;
+
+    const params = methodParams[selectedMethod] ?? {};
+    let payload: Record<string, unknown> | undefined;
+    let callResult: unknown;
+    let methodName = method.label;
+
+    setPlaygroundBusy(true);
+    setPlaygroundError(null);
+
+    try {
+      switch (selectedMethod) {
+        case "getLayerEntities": {
+          const layerName = String(params.layerName || activeLayerName || "").trim();
+          const where = String(params.where || "").trim();
+          const pageNumber = Number(params.pageNumber || "") || undefined;
+          const pageSize = Number(params.pageSize || "") || undefined;
+          payload = {
+            layerName,
+            where: where || undefined,
+            pageNumber,
+            pageSize,
+          };
+          if (typeof window.govmap.getLayerEntities !== "function") {
+            throw new Error("govmap.getLayerEntities is not available in this build.");
+          }
+          callResult = await window.govmap.getLayerEntities(payload, MAP_ELEMENT_ID);
+          break;
+        }
+        case "getEntities": {
+          const layerName = String(params.layerName || activeLayerName || "").trim();
+          const objectIdsRaw = String(params.objectIds || "").trim();
+          const objectIds = objectIdsRaw
+            ? objectIdsRaw
+                .split(",")
+                .map((id) => id.trim())
+                .filter(Boolean)
+            : [];
+          payload = {
+            layerName,
+            objectIds,
+          };
+          if (typeof window.govmap.getEntities === "function") {
+            callResult = await window.govmap.getEntities(payload, MAP_ELEMENT_ID);
+          } else if (typeof window.govmap.getLayerEntities === "function") {
+            methodName = "getLayerEntities (fallback)";
+            callResult = await window.govmap.getLayerEntities(payload, MAP_ELEMENT_ID);
+          } else {
+            throw new Error("Neither govmap.getEntities nor govmap.getLayerEntities are available.");
+          }
+          break;
+        }
+        case "identify": {
+          const x = Number(params.x ?? 0);
+          const y = Number(params.y ?? 0);
+          const level = Number(params.level ?? 0) || undefined;
+          const layerName = String(params.layerName || activeLayerName || "").trim();
+          payload = {
+            x,
+            y,
+            level,
+            layers: [layerName],
+          };
+          if (typeof window.govmap.identifyByXYAndLayer !== "function") {
+            throw new Error("govmap.identifyByXYAndLayer is not available in this build.");
+          }
+          callResult = await window.govmap.identifyByXYAndLayer(x, y, [layerName], MAP_ELEMENT_ID);
+          break;
+        }
+        case "zoomToGeometry": {
+          const wkt = String(params.wkt || "").trim();
+          const srid = Number(params.srid ?? 2039) || 2039;
+          const color = String(params.color || "#de3b8a");
+          const name = String(params.name || "geometry");
+          payload = {
+            wkt,
+            srid,
+            color,
+            name,
+          };
+          if (typeof window.govmap.displayGeometries !== "function") {
+            throw new Error("govmap.displayGeometries is not available in this build.");
+          }
+          callResult = await resolveProgressResult(window.govmap.displayGeometries(payload, MAP_ELEMENT_ID));
+          break;
+        }
+        case "getLayerExtent": {
+          const layerName = String(params.layerName || activeLayerName || "").trim();
+          payload = { layerName };
+          if (typeof window.govmap.getLayerData !== "function") {
+            throw new Error("govmap.getLayerData is not available in this build.");
+          }
+          callResult = await window.govmap.getLayerData(payload, MAP_ELEMENT_ID);
+          break;
+        }
+        case "custom": {
+          const methodNameInput = String(params.methodName || "").trim();
+          methodName = methodNameInput || "custom";
+          const rawPayload = String(params.rawPayload || "").trim();
+          let parsedPayload: unknown;
+          if (rawPayload) {
+            try {
+              parsedPayload = JSON.parse(rawPayload);
+            } catch (error) {
+              throw new Error("Failed to parse JSON payload for custom method.");
+            }
+          }
+          const fn = methodNameInput ? (window.govmap as Record<string, unknown>)[methodNameInput] : null;
+          if (typeof fn !== "function") {
+            throw new Error(`govmap.${methodNameInput || "?"} is not a function.`);
+          }
+          payload = (parsedPayload ?? undefined) as Record<string, unknown>;
+          callResult = await resolveProgressResult(
+            // @ts-expect-error dynamic invocation is allowed for playground
+            fn.length > 1 ? fn(parsedPayload, MAP_ELEMENT_ID) : fn(parsedPayload),
+          );
+          break;
+        }
+        default:
+          throw new Error("Unsupported method selection.");
+      }
+
+      const finalizedResult = await resolveProgressResult(callResult);
+      const now = Date.now();
+      const run: PlaygroundRun = {
+        methodId: selectedMethod,
+        methodName,
+        payload,
+        result: finalizedResult,
+        success: true,
+        startedAt: now,
+        endedAt: now,
+      };
+      setPlaygroundResult(run);
+      setPlaygroundHistory((prev) => {
+        const next: PlaygroundHistoryItem[] = [
+          {
+            id: `${now}-${selectedMethod}`,
+            methodId: selectedMethod,
+            methodName,
+            payloadPreview: summarizePayload(payload),
+            success: true,
+            timestamp: now,
+          },
+          ...prev,
+        ].slice(0, METHOD_HISTORY_MAX);
+        return next;
+      });
+      appendLog(`Playground: ${methodName} executed.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown playground error.";
+      setPlaygroundError(message);
+      const now = Date.now();
+      setPlaygroundHistory((prev) => {
+        const next: PlaygroundHistoryItem[] = [
+          {
+            id: `${now}-${selectedMethod}-error`,
+            methodId: selectedMethod,
+            methodName,
+            payloadPreview: summarizePayload(payload),
+            success: false,
+            timestamp: now,
+          },
+          ...prev,
+        ].slice(0, METHOD_HISTORY_MAX);
+        return next;
+      });
+      appendLog(`Playground failed (${methodName}): ${message}`);
+    } finally {
+      setPlaygroundBusy(false);
+    }
+  }, [
+    activeLayerName,
+    appendLog,
+    mapStatus,
+    methodParams,
+    playgroundMethods,
+    resolveProgressResult,
+    selectedMethod,
+  ]);
+
+  const clearPlaygroundHistory = useCallback(() => setPlaygroundHistory([]), []);
+
+  const logResultToConsole = useCallback(() => {
+    if (!playgroundResult) return;
+    // eslint-disable-next-line no-console
+    console.log("GovMap playground result", playgroundResult);
+    appendLog("Playground result dumped to console.");
+  }, [appendLog, playgroundResult]);
+
   return (
     <main className="page">
       <header className="hero">
@@ -433,6 +890,122 @@ function App() {
           <article className="card">
             <header>
               <div>
+                <p className="eyebrow">Playground</p>
+                <h2>GovMap methods</h2>
+                <p className="subtitle">Run docs APIs (getLayerEntities, identify, etc.) on the fly.</p>
+              </div>
+              <button type="button" onClick={clearPlaygroundHistory}>
+                Clear history
+              </button>
+            </header>
+            <div className="form">
+              <label>
+                <span>Active layer</span>
+                <input
+                  value={activeLayerName}
+                  onChange={(event) => setActiveLayerName(event.target.value)}
+                  placeholder="nadlan"
+                />
+              </label>
+              <label>
+                <span>Method</span>
+                <select
+                  value={selectedMethod}
+                  onChange={(event) => setSelectedMethod(event.target.value as PlaygroundMethodId)}
+                  style={{ padding: "0.6rem 0.8rem", borderRadius: "0.65rem", border: "1px solid #cbd5f5" }}
+                >
+                  {playgroundMethods.map((method) => (
+                    <option key={method.id} value={method.id}>
+                      {method.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="hint">{currentMethod?.description}</span>
+              </label>
+              {currentMethod?.fields.map((field) => (
+                <label key={field.key}>
+                  <span>{field.label}</span>
+                  {field.type === "textarea" ? (
+                    <textarea
+                      value={String((methodParams[selectedMethod] ?? {})[field.key] ?? "")}
+                      onChange={(event) => updateMethodParam(selectedMethod, field.key, event.target.value)}
+                      placeholder={field.placeholder}
+                      rows={3}
+                    />
+                  ) : (
+                    <input
+                      type={field.type === "number" ? "number" : "text"}
+                      value={String((methodParams[selectedMethod] ?? {})[field.key] ?? "")}
+                      onChange={(event) =>
+                        updateMethodParam(
+                          selectedMethod,
+                          field.key,
+                          field.type === "number" ? Number(event.target.value) : event.target.value,
+                        )
+                      }
+                      placeholder={field.placeholder}
+                    />
+                  )}
+                  {field.helper && <span className="hint">{field.helper}</span>}
+                </label>
+              ))}
+              <button type="button" className="primary" onClick={handlePlaygroundRun} disabled={playgroundBusy}>
+                {playgroundBusy ? "Running..." : "Run method"}
+              </button>
+              {playgroundError && <p className="error">{playgroundError}</p>}
+            </div>
+            <div className="response-box">
+              <div className="response-meta">
+                <span>Last run</span>
+                <span>{playgroundResult ? formatTimestamp(new Date(playgroundResult.endedAt)) : "n/a"}</span>
+              </div>
+              {playgroundResult ? (
+                <>
+                  <p className="hint">Payload: {summarizePayload(playgroundResult.payload)}</p>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", margin: "0.3rem 0" }}>
+                    <button type="button" onClick={logResultToConsole}>
+                      Log to console
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const text = safeStringify(playgroundResult.result);
+                        if (navigator.clipboard?.writeText) {
+                          navigator.clipboard.writeText(text);
+                          appendLog("Playground result copied to clipboard.");
+                        }
+                      }}
+                    >
+                      Copy JSON
+                    </button>
+                  </div>
+                  <pre>{safeStringify(playgroundResult.result)}</pre>
+                </>
+              ) : (
+                <p className="empty">Run a method to see the response here (full payload is also in console).</p>
+              )}
+            </div>
+            <div className="response-box">
+              <div className="response-meta">
+                <strong>History</strong>
+                <span>{playgroundHistory.length} saved</span>
+              </div>
+              {playgroundHistory.length === 0 ? (
+                <p className="empty">No runs yet.</p>
+              ) : (
+                playgroundHistory.map((entry) => (
+                  <p key={entry.id} className="log-entry">
+                    {formatTimestamp(new Date(entry.timestamp))} | {entry.methodName} |{" "}
+                    {entry.success ? "ok" : "error"} | {entry.payloadPreview}
+                  </p>
+                ))
+              )}
+            </div>
+          </article>
+
+          <article className="card">
+            <header>
+              <div>
                 <p className="eyebrow">Event log</p>
                 <h2>Recent actions</h2>
               </div>
@@ -442,7 +1015,7 @@ function App() {
             </header>
             <div className="log-box">
               {logs.length === 0 ? (
-                <p className="empty">Waiting for activity…</p>
+                <p className="empty">Waiting for activity...</p>
               ) : (
                 logs.map((entry) => (
                   <p key={entry} className="log-entry">
