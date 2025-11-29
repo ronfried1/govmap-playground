@@ -130,7 +130,7 @@ const defaultConfig: MapConfig = {
   token: ENV_GOVMAP_TOKEN,
   centerX: 200000,
   centerY: 630000,
-  level: 11,
+  level: 4,
   background: "4",
   identifyOnClick: true,
   showXY: true,
@@ -658,6 +658,13 @@ function App() {
     if (!method) return;
 
     const params = methodParams[selectedMethod] ?? {};
+    const resolveLayerName = () =>
+      String(
+        (params as { layerName?: string }).layerName ||
+          activeLayerName ||
+          layers[0] ||
+          DEFAULT_ACTIVE_LAYER,
+      ).trim();
     let payload: Record<string, unknown> | undefined;
     let callResult: unknown;
     let methodName = method.label;
@@ -668,7 +675,10 @@ function App() {
     try {
       switch (selectedMethod) {
         case "getLayerEntities": {
-          const layerName = String(params.layerName || activeLayerName || "").trim();
+          const layerName = resolveLayerName();
+          if (!layerName) {
+            throw new Error("Missing layerName. Set Active layer or provide Layer name.");
+          }
           const where = String(params.where || "").trim();
           const pageNumber = Number(params.pageNumber || "") || undefined;
           const pageSize = Number(params.pageSize || "") || undefined;
@@ -685,7 +695,10 @@ function App() {
           break;
         }
         case "getEntities": {
-          const layerName = String(params.layerName || activeLayerName || "").trim();
+          const layerName = resolveLayerName();
+          if (!layerName) {
+            throw new Error("Missing layerName. Set Active layer or provide Layer name.");
+          }
           const objectIdsRaw = String(params.objectIds || "").trim();
           const objectIds = objectIdsRaw
             ? objectIdsRaw
@@ -711,7 +724,10 @@ function App() {
           const x = Number(params.x ?? 0);
           const y = Number(params.y ?? 0);
           const level = Number(params.level ?? 0) || undefined;
-          const layerName = String(params.layerName || activeLayerName || "").trim();
+          const layerName = resolveLayerName();
+          if (!layerName) {
+            throw new Error("Missing layerName. Set Active layer or provide Layer name.");
+          }
           payload = {
             x,
             y,
@@ -742,7 +758,10 @@ function App() {
           break;
         }
         case "getLayerExtent": {
-          const layerName = String(params.layerName || activeLayerName || "").trim();
+          const layerName = resolveLayerName();
+          if (!layerName) {
+            throw new Error("Missing layerName. Set Active layer or provide Layer name.");
+          }
           payload = { layerName };
           if (typeof window.govmap.getLayerData !== "function") {
             throw new Error("govmap.getLayerData is not available in this build.");
