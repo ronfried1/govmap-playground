@@ -125,6 +125,7 @@ const PLAYGROUND_STORAGE_KEY = "govmap-playground";
 const METHOD_HISTORY_MAX = 10;
 const DEFAULT_ACTIVE_LAYER = "nadlan";
 const ENV_GOVMAP_TOKEN = import.meta.env.VITE_GOVMAP_TOKEN ?? "";
+const PLAYGROUND_TIMEOUT_MS = 8000;
 
 const defaultConfig: MapConfig = {
   token: ENV_GOVMAP_TOKEN,
@@ -159,6 +160,15 @@ function safeStringify(value: unknown, space = 2) {
 function summarizePayload(payload: unknown, limit = 220) {
   const raw = safeStringify(payload, 0);
   return raw.length > limit ? `${raw.slice(0, limit)}...` : raw;
+}
+
+function withTimeout<T>(promise: Promise<T>, label: string, ms = PLAYGROUND_TIMEOUT_MS) {
+  return Promise.race<T>([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms. Check token/auth.`)), ms),
+    ),
+  ]);
 }
 
 function App() {
@@ -658,13 +668,18 @@ function App() {
     if (!method) return;
 
     const params = methodParams[selectedMethod] ?? {};
-    const resolveLayerName = () =>
-      String(
+    const resolveLayerName = () => {
+      const candidate = String(
         (params as { layerName?: string }).layerName ||
           activeLayerName ||
           layers[0] ||
           DEFAULT_ACTIVE_LAYER,
       ).trim();
+      if (candidate.toLowerCase() === "undefined" || candidate.toLowerCase() === "null") {
+        return "";
+      }
+      return candidate;
+    };
     let payload: Record<string, unknown> | undefined;
     let callResult: unknown;
     let methodName = method.label;
@@ -691,7 +706,10 @@ function App() {
           if (typeof window.govmap.getLayerEntities !== "function") {
             throw new Error("govmap.getLayerEntities is not available in this build.");
           }
-          callResult = await window.govmap.getLayerEntities(payload, MAP_ELEMENT_ID);
+          callResult = await withTimeout(
+            window.govmap.getLayerEntities(payload, MAP_ELEMENT_ID),
+            "getLayerEntities",
+          );
           break;
         }
         case "getEntities": {
@@ -711,10 +729,16 @@ function App() {
             objectIds,
           };
           if (typeof window.govmap.getEntities === "function") {
-            callResult = await window.govmap.getEntities(payload, MAP_ELEMENT_ID);
+            callResult = await withTimeout(
+              window.govmap.getEntities(payload, MAP_ELEMENT_ID),
+              "getEntities",
+            );
           } else if (typeof window.govmap.getLayerEntities === "function") {
             methodName = "getLayerEntities (fallback)";
-            callResult = await window.govmap.getLayerEntities(payload, MAP_ELEMENT_ID);
+            callResult = await withTimeout(
+              window.govmap.getLayerEntities(payload, MAP_ELEMENT_ID),
+              "getLayerEntities",
+            );
           } else {
             throw new Error("Neither govmap.getEntities nor govmap.getLayerEntities are available.");
           }
@@ -737,7 +761,10 @@ function App() {
           if (typeof window.govmap.identifyByXYAndLayer !== "function") {
             throw new Error("govmap.identifyByXYAndLayer is not available in this build.");
           }
-          callResult = await window.govmap.identifyByXYAndLayer(x, y, [layerName], MAP_ELEMENT_ID);
+          callResult = await withTimeout(
+            window.govmap.identifyByXYAndLayer(x, y, [layerName], MAP_ELEMENT_ID),
+            "identifyByXYAndLayer",
+          );
           break;
         }
         case "zoomToGeometry": {
@@ -754,7 +781,10 @@ function App() {
           if (typeof window.govmap.displayGeometries !== "function") {
             throw new Error("govmap.displayGeometries is not available in this build.");
           }
-          callResult = await resolveProgressResult(window.govmap.displayGeometries(payload, MAP_ELEMENT_ID));
+          callResult = await withTimeout(
+            resolveProgressResult(window.govmap.displayGeometries(payload, MAP_ELEMENT_ID)),
+            "displayGeometries",
+          );
           break;
         }
         case "getLayerExtent": {
@@ -766,7 +796,10 @@ function App() {
           if (typeof window.govmap.getLayerData !== "function") {
             throw new Error("govmap.getLayerData is not available in this build.");
           }
-          callResult = await window.govmap.getLayerData(payload, MAP_ELEMENT_ID);
+          callResult = await withTimeout(
+            window.govmap.getLayerData(payload, MAP_ELEMENT_ID),
+            "getLayerData",
+          );
           break;
         }
         case "custom": {
@@ -1037,8 +1070,8 @@ function App() {
               {logs.length === 0 ? (
                 <p className="empty">Waiting for activity...</p>
               ) : (
-                logs.map((entry) => (
-                  <p key={entry} className="log-entry">
+                logs.map((entry, index) => (
+                  <p key={`${entry}-${index}`} className="log-entry">
                     {entry}
                   </p>
                 ))
