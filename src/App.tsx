@@ -48,6 +48,7 @@ type MapConfig = {
   centerY: number;
   level: number;
   background: string;
+  layersMode?: number;
   identifyOnClick: boolean;
   showXY: boolean;
   zoomButtons: boolean;
@@ -133,6 +134,7 @@ const defaultConfig: MapConfig = {
   centerY: 630000,
   level: 4,
   background: "4",
+  layersMode: 1,
   identifyOnClick: true,
   showXY: true,
   zoomButtons: true,
@@ -335,6 +337,7 @@ function App() {
         },
         background: nextConfig.background || undefined,
         layers: nextLayers.length ? nextLayers : undefined,
+        layersMode: nextConfig.layersMode ?? 1,
         identifyOnClick: nextConfig.identifyOnClick,
         showXY: nextConfig.showXY,
         zoomButtons: nextConfig.zoomButtons,
@@ -676,9 +679,9 @@ function App() {
           DEFAULT_ACTIVE_LAYER,
       ).trim();
       if (candidate.toLowerCase() === "undefined" || candidate.toLowerCase() === "null") {
-        return "";
+        return DEFAULT_ACTIVE_LAYER;
       }
-      return candidate;
+      return candidate || DEFAULT_ACTIVE_LAYER;
     };
     let payload: Record<string, unknown> | undefined;
     let callResult: unknown;
