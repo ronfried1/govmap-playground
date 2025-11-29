@@ -13,32 +13,7 @@ import { convertDbfToCsv } from "./utils/dbf";
 
 declare global {
   interface Window {
-    govmap?: {
-      createMap: (
-        elementId: string,
-        options?: Record<string, unknown>,
-      ) => Promise<unknown>;
-      dispose?: (elementId: string) => void;
-      getLayerEntities?: (
-        payload: Record<string, unknown>,
-        mapDivId?: string,
-      ) => Promise<unknown>;
-      getEntities?: (payload: Record<string, unknown>, mapDivId?: string) => Promise<unknown>;
-      identifyByXYAndLayer?: (
-        x: number,
-        y: number,
-        layers: string[],
-        mapDivId?: string,
-      ) => Promise<unknown>;
-      displayGeometries?: (
-        payload: Record<string, unknown>,
-        mapDivId?: string,
-      ) => { progress?: (cb: (data: unknown) => void) => unknown; then?: (cb: () => void) => unknown };
-      zoomToXY?: (payload: Record<string, unknown>, mapDivId?: string) => void;
-      getLayerData?: (payload: Record<string, unknown>, mapDivId?: string) => Promise<unknown>;
-      getMapUrl?: (payload?: unknown, mapDivId?: string) => Promise<unknown>;
-      getCenter?: (payload?: unknown, mapDivId?: string) => Promise<unknown>;
-    };
+    govmap?: any
   }
 }
 
@@ -126,16 +101,19 @@ const PLAYGROUND_STORAGE_KEY = "govmap-playground";
 const METHOD_HISTORY_MAX = 10;
 const DEFAULT_ACTIVE_LAYER = "nadlan";
 const ENV_GOVMAP_TOKEN = import.meta.env.VITE_GOVMAP_TOKEN ?? "";
+console.log("this is",ENV_GOVMAP_TOKEN);
+
 const PLAYGROUND_TIMEOUT_MS = 8000;
+const DEFAULT_LAYERS = ["SUB_GUSH_ALL", "PARCEL_ALL", "layer_215978", "nadlan"];
 
 const defaultConfig: MapConfig = {
   token: ENV_GOVMAP_TOKEN,
   centerX: 200000,
   centerY: 630000,
-  level: 4,
-  background: "4",
+  level: 7,
+  background: "2",
   layersMode: 1,
-  identifyOnClick: true,
+  identifyOnClick: false,
   showXY: true,
   zoomButtons: true,
   bgButton: true,
@@ -180,7 +158,7 @@ function App() {
   const [mapStatus, setMapStatus] = useState<MapStatus>("idle");
   const [draftConfig, setDraftConfig] = useState<MapConfig>(defaultConfig);
   const [appliedConfig, setAppliedConfig] = useState<MapConfig>(defaultConfig);
-  const [layers, setLayers] = useState<string[]>(["16"]);
+  const [layers, setLayers] = useState<string[]>(DEFAULT_LAYERS);
   const [pendingLayer, setPendingLayer] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
   const [streetDealsForm, setStreetDealsForm] = useState({
@@ -373,44 +351,35 @@ function App() {
   const handleApplyConfig = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      setAppliedConfig(draftConfig);
-      rebuildMap(draftConfig);
+      appendLog("Base map configuration is locked. Edit .env and reload to change token/settings.");
+      setAppliedConfig(defaultConfig);
+      setDraftConfig(defaultConfig);
+      rebuildMap(defaultConfig, DEFAULT_LAYERS);
     },
-    [draftConfig, rebuildMap],
+    [appendLog, rebuildMap],
   );
 
   const handleLayerAdd = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      const trimmed = pendingLayer.trim();
-      if (!trimmed) return;
-      if (layers.includes(trimmed)) {
-        appendLog(`Layer ${trimmed} already attached.`);
-        setPendingLayer("");
-        return;
-      }
-      const updated = [...layers, trimmed];
-      setLayers(updated);
+      appendLog("Layer list is locked to defaults. Use map legend toggles instead.");
       setPendingLayer("");
-      rebuildMap(appliedConfig, updated);
     },
-    [appendLog, appliedConfig, layers, pendingLayer, rebuildMap],
+    [appendLog],
   );
 
   const handleLayerRemove = useCallback(
     (layerId: string) => {
-      const updated = layers.filter((layer) => layer !== layerId);
-      setLayers(updated);
-      rebuildMap(appliedConfig, updated);
+      appendLog(`Layer list is locked; cannot remove ${layerId}. Use map legend toggles instead.`);
     },
-    [appliedConfig, layers, rebuildMap],
+    [appendLog],
   );
 
   const resetToDefaults = useCallback(() => {
     setDraftConfig(defaultConfig);
     setAppliedConfig(defaultConfig);
-    setLayers(["16"]);
-    rebuildMap(defaultConfig, ["16"]);
+    setLayers(DEFAULT_LAYERS);
+    rebuildMap(defaultConfig, DEFAULT_LAYERS);
     appendLog("Reset configuration back to defaults.");
   }, [appendLog, rebuildMap]);
 
@@ -1089,149 +1058,34 @@ function App() {
               <div>
                 <p className="eyebrow">Bootstrap</p>
                 <h2>Map configuration</h2>
+                <p className="subtitle">Static setup to mirror the Landwisely map.</p>
               </div>
               <button type="button" onClick={resetToDefaults}>
-                Reset
+                Reload defaults
               </button>
             </header>
-            <form className="form" onSubmit={handleApplyConfig}>
-              <label>
-                <span>API token</span>
-                <input
-                  placeholder="Paste your govmap token"
-                  value={draftConfig.token}
-                  onChange={(event) =>
-                    setDraftConfig((prev) => ({
-                      ...prev,
-                      token: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <div className="grid">
-                <label>
-                  <span>Center X</span>
-                  <input
-                    type="number"
-                    value={draftConfig.centerX}
-                    onChange={(event) =>
-                      setDraftConfig((prev) => ({
-                        ...prev,
-                        centerX: Number(event.target.value),
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Center Y</span>
-                  <input
-                    type="number"
-                    value={draftConfig.centerY}
-                    onChange={(event) =>
-                      setDraftConfig((prev) => ({
-                        ...prev,
-                        centerY: Number(event.target.value),
-                      }))
-                    }
-                  />
-                </label>
+            <div className="response-box">
+              <p className="hint">Edit .env and reload to change these values.</p>
+              <div className="dbf-summary">
+                <span>
+                  <strong>Token:</strong> {appliedConfig.token ? "from env" : "missing"}
+                </span>
+                <span>
+                  <strong>Layers:</strong> {layers.join(", ")}
+                </span>
+                <span>
+                  <strong>Background:</strong> {appliedConfig.background}
+                </span>
+                <span>
+                  <strong>Identify on click:</strong> {appliedConfig.identifyOnClick ? "yes" : "no"}
+                </span>
+                <span>
+                  <strong>Layers mode:</strong> {appliedConfig.layersMode ?? 1}
+                </span>
+                <span>
+                  <strong>Zoom buttons:</strong> {appliedConfig.zoomButtons ? "yes" : "no"}
+                </span>
               </div>
-              <div className="grid">
-                <label>
-                  <span>Zoom level</span>
-                  <input
-                    type="number"
-                    value={draftConfig.level}
-                    onChange={(event) =>
-                      setDraftConfig((prev) => ({
-                        ...prev,
-                        level: Number(event.target.value),
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Background code</span>
-                  <input
-                    value={draftConfig.background}
-                    onChange={(event) =>
-                      setDraftConfig((prev) => ({
-                        ...prev,
-                        background: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-              <label>
-                <span>Language</span>
-                <input
-                  value={draftConfig.language}
-                  onChange={(event) =>
-                    setDraftConfig((prev) => ({
-                      ...prev,
-                      language: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <div className="toggles">
-                {(["identifyOnClick", "showXY", "zoomButtons", "bgButton"] as Array<
-                  keyof Pick<MapConfig, "identifyOnClick" | "showXY" | "zoomButtons" | "bgButton">
-                >).map((key) => (
-                  <label key={key} className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={draftConfig[key]}
-                      onChange={(event) =>
-                        setDraftConfig((prev) => ({
-                          ...prev,
-                          [key]: event.target.checked,
-                        }))
-                      }
-                    />
-                    <span>{key}</span>
-                  </label>
-                ))}
-              </div>
-              <button type="submit" className="primary">
-                Apply & refresh map
-              </button>
-            </form>
-          </article>
-
-          <article className="card">
-            <header>
-              <div>
-                <p className="eyebrow">Layers</p>
-                <h2>Layer manager</h2>
-              </div>
-            </header>
-            <form className="layer-form" onSubmit={handleLayerAdd}>
-              <input
-                placeholder="16, PARCEL_HOKS, GASSTATIONS…"
-                value={pendingLayer}
-                onChange={(event) => setPendingLayer(event.target.value)}
-              />
-              <button type="submit">Add layer</button>
-            </form>
-            <div className="chips">
-              {layers.length === 0 ? (
-                <span className="empty">No layers attached.</span>
-              ) : (
-                layers.map((layer) => (
-                  <span key={layer} className="chip">
-                    {layer}
-                    <button
-                      type="button"
-                      aria-label={`Remove layer ${layer}`}
-                      onClick={() => handleLayerRemove(layer)}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))
-              )}
             </div>
           </article>
 
