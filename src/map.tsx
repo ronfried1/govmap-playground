@@ -108,7 +108,7 @@ function MapStandalone() {
           }
           const params = { layerName: "nadlan" };
           window.govmap
-            .getLayerEntities(params, MAP_ELEMENT_ID)
+            .getLayerEntities(params)
             .then((response: any) => {
               // eslint-disable-next-line no-console
               console.log("Manual getLayerEntities nadlan:", response);
