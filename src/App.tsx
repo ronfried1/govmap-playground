@@ -768,7 +768,6 @@ function App() {
           }
           payload = (parsedPayload ?? undefined) as Record<string, unknown>;
           callResult = await resolveProgressResult(
-            // @ts-expect-error dynamic invocation is allowed for playground
             fn.length > 1 ? fn(parsedPayload, MAP_ELEMENT_ID) : fn(parsedPayload),
           );
           break;
