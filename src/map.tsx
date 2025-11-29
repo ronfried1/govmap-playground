@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const GOVMAP_SCRIPT_URL = "https://www.govmap.gov.il/govmap/api/govmap.api.js";
 const MAP_ELEMENT_ID = "map-standalone";
-const DEFAULT_LAYERS = ["SUB_GUSH_ALL", "PARCEL_ALL", "layer_215978"];
+const DEFAULT_LAYERS = ["SUB_GUSH_ALL", "PARCEL_ALL", "layer_215978", "nadlan"];
 const ENV_GOVMAP_TOKEN = import.meta.env.VITE_GOVMAP_TOKEN ?? "";
 
 function useGovmapScript() {

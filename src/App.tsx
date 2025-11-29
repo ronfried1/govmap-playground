@@ -90,7 +90,7 @@ const METHOD_HISTORY_MAX = 10;
 const DEFAULT_ACTIVE_LAYER = "layer_215978";
 const ENV_GOVMAP_TOKEN = import.meta.env.VITE_GOVMAP_TOKEN ?? "";
 const PLAYGROUND_TIMEOUT_MS = 8000;
-const DEFAULT_LAYERS = ["SUB_GUSH_ALL", "PARCEL_ALL", "layer_215978"];
+const DEFAULT_LAYERS = ["SUB_GUSH_ALL", "PARCEL_ALL", "layer_215978", "nadlan"];
 
 const defaultConfig: MapConfig = {
   token: ENV_GOVMAP_TOKEN,
