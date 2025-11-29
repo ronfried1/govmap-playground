@@ -10,6 +10,7 @@ import {
 import "./index.css";
 import { convertDbfToCsv } from "./utils/dbf";
 
+
 declare global {
   interface Window {
     govmap?: {
@@ -123,9 +124,10 @@ const MAX_LOGS = 40;
 const PLAYGROUND_STORAGE_KEY = "govmap-playground";
 const METHOD_HISTORY_MAX = 10;
 const DEFAULT_ACTIVE_LAYER = "nadlan";
+const ENV_GOVMAP_TOKEN = import.meta.env.VITE_GOVMAP_TOKEN ?? "";
 
 const defaultConfig: MapConfig = {
-  token: "",
+  token: ENV_GOVMAP_TOKEN,
   centerX: 200000,
   centerY: 630000,
   level: 11,
