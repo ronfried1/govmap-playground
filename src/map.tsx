@@ -145,18 +145,16 @@ function MapStandalone() {
             console.warn("govmap.intersectFeatures is not ready yet.");
             return;
           }
-          if (typeof window.govmap?.getMapExtent !== "function") {
+          if (typeof window.govmap?.getView !== "function") {
             // eslint-disable-next-line no-console
-            console.warn("govmap.getMapExtent is not available.");
+            console.warn("govmap.getView is not available.");
             return;
           }
 
           window.govmap
-            .getMapExtent()
-            .then((extent: any) => {
-              // eslint-disable-next-line no-console
-              console.log("Current map extent:", extent);
-              const { xmin, ymin, xmax, ymax } = extent;
+            .getView()
+            .then((view: any) => {
+              const { xmin, ymin, xmax, ymax } = view?.extent ?? {};
               const wktBox = `POLYGON((
         ${xmin} ${ymin},
         ${xmax} ${ymin},
@@ -171,17 +169,15 @@ function MapStandalone() {
                 fields: ["*"],
                 maxResults: 5000,
               };
-              // eslint-disable-next-line no-console
-              console.log("Intersect params:", params);
               return window.govmap.intersectFeatures(params);
             })
             .then((res: any) => {
               // eslint-disable-next-line no-console
-              console.log("Intersected features:", res);
+              console.log("Intersect result:", res);
             })
             .catch((err: any) => {
               // eslint-disable-next-line no-console
-              console.error("Error in intersectFeatures:", err);
+              console.error("Intersect error:", err);
             });
         }}
         style={{
@@ -195,6 +191,54 @@ function MapStandalone() {
         }}
       >
         Fetch Nadlan Features (BBox)
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (typeof window.govmap?.getXY !== "function") {
+            // eslint-disable-next-line no-console
+            console.warn("govmap.getXY is not available yet.");
+            return;
+          }
+          if (typeof window.govmap?.intersectFeatures !== "function") {
+            // eslint-disable-next-line no-console
+            console.warn("govmap.intersectFeatures is not available yet.");
+            return;
+          }
+          window.govmap.getXY().progress((resp: any) => {
+            const { x, y } = resp.mapPoint ?? {};
+            // eslint-disable-next-line no-console
+            console.log("Clicked map point:", resp);
+            const params = {
+              geometry: `POINT(${x} ${y})`,
+              layerName: "layer_nadlan",
+              fields: ["*"],
+            };
+            // eslint-disable-next-line no-console
+            console.log("intersectFeatures params:", params);
+            window.govmap
+              .intersectFeatures(params)
+              .then((res: any) => {
+                // eslint-disable-next-line no-console
+                console.log("intersectFeatures result:", res);
+              })
+              .catch((err: any) => {
+                // eslint-disable-next-line no-console
+                console.error("intersectFeatures error:", err);
+              });
+          });
+        }}
+        style={{
+          margin: "0.25rem 0 1rem",
+          padding: "0.55rem 0.9rem",
+          borderRadius: "0.65rem",
+          border: "1px solid #cbd5f5",
+          background: "#312e81",
+          color: "#fff",
+          cursor: "pointer",
+        }}
+      >
+        Click on map → fetch Nadlan features
       </button>
       <div
         id={MAP_ELEMENT_ID}
