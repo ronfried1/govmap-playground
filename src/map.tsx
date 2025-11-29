@@ -137,6 +137,65 @@ function MapStandalone() {
           </button>
         ))}
       </div>
+      <button
+        type="button"
+        onClick={() => {
+          if (typeof window.govmap?.intersectFeatures !== "function") {
+            // eslint-disable-next-line no-console
+            console.warn("govmap.intersectFeatures is not ready yet.");
+            return;
+          }
+          if (typeof window.govmap?.getMapExtent !== "function") {
+            // eslint-disable-next-line no-console
+            console.warn("govmap.getMapExtent is not available.");
+            return;
+          }
+
+          window.govmap
+            .getMapExtent()
+            .then((extent: any) => {
+              // eslint-disable-next-line no-console
+              console.log("Current map extent:", extent);
+              const { xmin, ymin, xmax, ymax } = extent;
+              const wktBox = `POLYGON((
+        ${xmin} ${ymin},
+        ${xmax} ${ymin},
+        ${xmax} ${ymax},
+        ${xmin} ${ymax},
+        ${xmin} ${ymin}
+      ))`;
+              const params = {
+                layerName: "layer_nadlan",
+                geometry: wktBox,
+                geometryType: "esriGeometryPolygon",
+                fields: ["*"],
+                maxResults: 5000,
+              };
+              // eslint-disable-next-line no-console
+              console.log("Intersect params:", params);
+              return window.govmap.intersectFeatures(params);
+            })
+            .then((res: any) => {
+              // eslint-disable-next-line no-console
+              console.log("Intersected features:", res);
+            })
+            .catch((err: any) => {
+              // eslint-disable-next-line no-console
+              console.error("Error in intersectFeatures:", err);
+            });
+        }}
+        style={{
+          margin: "0.25rem 0 1rem",
+          padding: "0.55rem 0.9rem",
+          borderRadius: "0.65rem",
+          border: "1px solid #cbd5f5",
+          background: "#292a7d",
+          color: "#fff",
+          cursor: "pointer",
+        }}
+      >
+        Fetch Nadlan Features (BBox)
+      </button>
       <div
         id={MAP_ELEMENT_ID}
         style={{
