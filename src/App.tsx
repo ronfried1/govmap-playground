@@ -863,6 +863,11 @@ function App() {
             undocumented street-deals endpoint without CORS drama.
           </p>
         </div>
+        <div className="hero-actions">
+          <a className="nav-button" href="/map">
+            Open standalone map
+          </a>
+        </div>
         <div className="status-chip" data-state={mapStatus}>
           <span>Map status:</span>
           <strong>{mapStatus}</strong>

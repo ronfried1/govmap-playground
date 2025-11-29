@@ -45,6 +45,31 @@ main.page {
   color: #475569;
 }
 
+.hero-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.nav-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.65rem;
+  border: 1px solid #cbd5f5;
+  background: #fff;
+  text-decoration: none;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.nav-button:hover {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+}
+
 .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.18em;
